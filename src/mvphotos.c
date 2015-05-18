@@ -27,25 +27,29 @@ static void trim_spaces(char *buf)
 
 /* Show the tag name and contents if the tag exists */
 
-static const char *short_options = "hm:t:x:nvlcd:";
+static const char *short_options = "cdg:hlm:nqt:vx:";
 
 struct option long_options_data[] = {
-  {"help", no_argument, 0, 'h'},
   {"dryrun", no_argument, 0, 'n'},
-  {"verbose", no_argument, 0, 'v'},
-  {"hms", required_argument, 0, 'm'},
-  {"time", required_argument, 0, 't'},
   {"extension", required_argument, 0, 'x'},
+  {"gps", no_argument, 0, 'g'},
+  {"help", no_argument, 0, 'h'},
+  {"hms", required_argument, 0, 'm'},
   {"link", no_argument, 0, 'l'},
+  {"quiet", no_argument, 0, 'q'},
+  {"time", required_argument, 0, 't'},
+  {"verbose", no_argument, 0, 'v'},
   {0, 0, 0, 0}
 };
 
 char *extension = ".jpg";
 char hms = '_';
 char time_separator = 'T';
+int gps = 0;
 char *target_dir = NULL;
 int link_instead = 0;
 int copy = 0;
+int ed_script = 1;
 int dry_run = 0;
 int verbose = 0;
 
@@ -68,12 +72,14 @@ print_usage()
   printf("   Options are:\n");
   printf("     -t --time <char>       Use <char> to separate date and time\n");
   printf("     -m --hms <char>        Use <char> to separate hours, minutes, seconds\n");
+  printf("     -g --gps               Build the GPS data into the filename\n");
   printf("     -x --extension <extn>  Use <extn> as the filename extension\n");
   printf("                            Include the '.' explicitly if wanted\n");
   printf("     -l --link              Link instead of rename\n");
   // printf("     -c --copy              Copy instead of rename\n");
   printf("     -d --dir <directory>   Move, link, or copy to <directory>\n");
   printf("     -n --dryrun            Don't actually rename anything\n");
+  printf("     -q --quiet             Don't output anything\n");
   printf("     -v --verbose           Show renames\n");
   printf("    \n");
 }
@@ -105,12 +111,19 @@ int main(int argc, char **argv)
     case 'v':
       verbose = 1;
       break;
+    case 'q':
+      ed_script = 0;
+      verbose = 0;
+      break;
     case 'l':
       link_instead = 1;
       break;
     /* case 'c': */
     /*   copy = 1; */
     /*   break; */
+    case 'g':
+      gps = 1;
+      break;
     case 'd':
       target_dir = optarg;
       break;
@@ -153,6 +166,20 @@ int main(int argc, char **argv)
       continue;
     }
 
+    if (gps) {
+      ExifEntry *latitude_ref_entry = exif_content_get_entry(ed->ifd[EXIF_IFD_0], EXIF_TAG_GPS_LATITUDE_REF);
+      ExifEntry *latitude_entry = exif_content_get_entry(ed->ifd[EXIF_IFD_0], EXIF_TAG_GPS_LATITUDE);
+      ExifEntry *longitude_ref_entry = exif_content_get_entry(ed->ifd[EXIF_IFD_0], EXIF_TAG_GPS_LONGITUDE_REF);
+      ExifEntry *longitude_entry = exif_content_get_entry(ed->ifd[EXIF_IFD_0], EXIF_TAG_GPS_LONGITUDE);
+      if (latitude_ref_entry && latitude_entry && longitude_ref_entry && longitude_entry) {
+
+	/* todo: find examples of how to extract GPS data */
+	
+      } else {
+	fprintf(stderr, "No gps data in %s", file_old_name);
+      }
+    }
+
     for (try_tag_p = tags_to_try;
 	 (try_tag = *try_tag_p) != 0;
 	 try_tag_p++) {
@@ -173,16 +200,16 @@ int main(int argc, char **argv)
 	    strncpy(file_new_name, target_dir, 1023);
 	    remaining = 1023 - strlen(target_dir);
 	  } else {
-	  char *last_slash = strrchr(file_old_name, '/');
-	  if (last_slash) {
-	    last_slash++;
-	    int upto = last_slash - file_old_name;
-	    strncpy(file_new_name, file_old_name, upto);
-	    file_new_name[upto] = '\0';
-	    remaining -= upto;
-	  } else {
-	    file_new_name[0] = 0;
-	  }
+	    char *last_slash = strrchr(file_old_name, '/');
+	    if (last_slash) {
+	      last_slash++;
+	      int upto = last_slash - file_old_name;
+	      strncpy(file_new_name, file_old_name, upto);
+	      file_new_name[upto] = '\0';
+	      remaining -= upto;
+	    } else {
+	      file_new_name[0] = 0;
+	    }
 	  }
 	  date_string_buf[4] = '-';
 	  date_string_buf[7] = '-';
@@ -196,6 +223,9 @@ int main(int argc, char **argv)
 	    printf("%s \"%s\" \"%s\"\n",
 		   link_instead ? "ln" : copy ? "cp" : "mv",
 		   file_old_name, file_new_name);
+	  }
+	  if (ed_script) {
+	    printf("s/%s/%s/\n", file_old_name, file_new_name);
 	  }
 	  if (!dry_run) {
 	    if (link_instead) {
