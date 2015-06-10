@@ -28,11 +28,12 @@ static void trim_spaces(char *buf)
 
 /* Show the tag name and contents if the tag exists */
 
-static const char *short_options = "cdg:hlm:nqt:vx:";
+static const char *short_options = "cd:g:hlm:nqt:vx:";
 
 struct option long_options_data[] = {
   {"dryrun", no_argument, 0, 'n'},
   {"extension", required_argument, 0, 'x'},
+  {"directory", required_argument, 0, 'd'},
   {"gps", no_argument, 0, 'g'},
   {"help", no_argument, 0, 'h'},
   {"hms", required_argument, 0, 'm'},
@@ -74,6 +75,7 @@ print_usage()
   printf("                            Include the '.' explicitly if wanted\n");
   printf("     -l --link              Link instead of rename\n");
   printf("     -d --dir <directory>   Work in <directory>\n");
+  printf("     -f --force             Ignore file types\n");
   printf("     -n --dryrun            Don't actually rename anything\n");
   printf("     -q --quiet             Don't output anything\n");
   printf("     -v --verbose           Show renames\n");
@@ -89,6 +91,7 @@ int main(int argc, char **argv)
   struct dirent *dirent;
   char **deletion_v;
   unsigned int deletion_c = 0;
+  int force = 0;
 
   while (1) {
     int option_index = 0;
@@ -106,6 +109,9 @@ int main(int argc, char **argv)
     case 'h':
       print_usage();
       exit(0);
+    case 'f':
+      force = 1;
+      break;
     case 'n':
       dry_run = 1;
       break;
@@ -168,9 +174,18 @@ int main(int argc, char **argv)
     char file_new_name[1024];
     int remaining = 1023;
 
-    if (dirent->d_type != DT_REG) {
-      break;
+    if (verbose) {
+      fprintf(stderr, "Considering %s (type %d)\n", file_old_name, dirent->d_type);
     }
+
+#if 0
+    if ((!force) && (dirent->d_type != DT_REG)) {
+      if (verbose) {
+	fprintf(stderr, "%s is not a regular file\n", file_old_name);
+      }
+      continue;
+    }
+#endif
 
     /* Load an ExifData object from an EXIF file */
     ed = exif_data_new_from_file(file_old_name);
