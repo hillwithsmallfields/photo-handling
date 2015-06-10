@@ -113,7 +113,6 @@ int main(int argc, char **argv)
       verbose = 1;
       break;
     case 'q':
-      ed_script = 0;
       verbose = 0;
       break;
     case 'g':
@@ -143,8 +142,16 @@ int main(int argc, char **argv)
 
   for (; optind < argc; optind++) {
     char *file_date_name = argv[optind];
-    fprintf(stderr, "Noting %s for deletion of matching entries\n", file_date_name);
-    deletion_v[deletion_c++] = file_date_name;
+    char *last_slash = strrchr(file_date_name, '/');
+    deletion_v[deletion_c++] = (last_slash != NULL) ? last_slash + 1 : file_date_name ;
+  }
+
+  if (verbose) {
+    int i;
+    fprintf(stderr, "Will delete files with same dates as:\n");
+    for (i = 0; i < deletion_c; i++) {
+      fprintf(stderr, "  %s\n", deletion_v[i]);
+    }
   }
 
   if (dir == NULL) {
@@ -153,14 +160,17 @@ int main(int argc, char **argv)
   }
 
   for (dirent = readdir(dir); dirent != NULL; dirent = readdir(dir)) {
-    file_old_name = dirent->d_name;
-    fprintf(stderr, "Looking at file %s\n", file_old_name);
+    char *file_old_name = dirent->d_name;
 
     ExifTag try_tag, *try_tag_p;
 
     char date_string_buf[1024];
     char file_new_name[1024];
     int remaining = 1023;
+
+    if (dirent->d_type != DT_REG) {
+      break;
+    }
 
     /* Load an ExifData object from an EXIF file */
     ed = exif_data_new_from_file(file_old_name);
@@ -177,7 +187,7 @@ int main(int argc, char **argv)
       if (latitude_ref_entry && latitude_entry && longitude_ref_entry && longitude_entry) {
 
 	/* todo: find examples of how to extract GPS data */
-	
+
       } else {
 	fprintf(stderr, "No gps data in %s", file_old_name);
       }
@@ -199,6 +209,8 @@ int main(int argc, char **argv)
 	    date_string_buf[10] == ' ' &&
 	    date_string_buf[13] == ':' &&
 	    date_string_buf[16] == ':') {
+	  int i;
+
 	  if (target_dir != NULL) {
 	    strncpy(file_new_name, target_dir, 1023);
 	    remaining = 1023 - strlen(target_dir);
@@ -222,8 +234,17 @@ int main(int argc, char **argv)
 	  strncat(file_new_name, date_string_buf, remaining);
 	  remaining -= strlen(date_string_buf);
 	  strncat(file_new_name, ".jpg", remaining);
-	  if (!dry_run) {
-	    /* todo: search for file_new_name in deletion_v */
+
+	  for (i = 0; i < deletion_c; i++) {
+	    if (strcmp(file_new_name, deletion_v[i]) == 0) {
+	      if (verbose || dry_run) {
+		fprintf(stderr, "  Will delete %s because it has date-based name %s\n", file_old_name, file_new_name);
+	      }
+	      if (!dry_run) {
+		unlink(file_old_name);
+	      }
+	      break;
+	    }
 	  }
 	} else {
 	  printf("Date format for \"%s\" not as expected\n", file_old_name);
@@ -235,5 +256,8 @@ int main(int argc, char **argv)
     /* Free the EXIF data */
     exif_data_unref(ed);
   }
+
+  free(deletion_v);
+
   return 0;
 }
